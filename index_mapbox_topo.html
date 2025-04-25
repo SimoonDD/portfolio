@@ -1,0 +1,393 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Portfolio SIG Outdoor</title>
+    <script src='https://cdnjs.cloudflare.com/ajax/libs/mapbox-gl/2.12.0/mapbox-gl.js'></script>
+    <link href='https://cdnjs.cloudflare.com/ajax/libs/mapbox-gl/2.12.0/mapbox-gl.css' rel='stylesheet' />
+    <style>
+        body, html {
+            margin: 0;
+            padding: 0;
+            height: 100%;
+            overflow: hidden;
+            font-family: 'Arial', sans-serif;
+            color: #333;
+        }
+        
+        #map {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            z-index: 1;
+        }
+        
+        .footprints {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            z-index: 2;
+            pointer-events: none;
+        }
+        
+        .footprint {
+            position: absolute;
+            width: 10px;
+            height: 20px;
+            background-size: contain;
+            background-repeat: no-repeat;
+            background-position: center;
+            opacity: 0;
+            transition: opacity 0.5s ease-out;
+            transform-origin: center;
+        }
+        
+        .left-foot {
+            background-image: url('images/left_footstep.png');
+        }
+        
+        .right-foot {
+            background-image: url('images/right_footstep.png');
+        }
+        
+        .content-container {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            z-index: 3;
+            background-color: rgba(255, 255, 255, 0.75);
+            padding: 25px 35px;
+            border-radius: 10px;
+            text-align: center;
+            box-shadow: 0 4px 15px rgba(0, 0, 0, 0.2);
+        }
+        
+        h1 {
+            margin-top: 0;
+            color: #1a1a1a;
+            font-size: 2.2em;
+        }
+        
+        .links {
+            margin-top: 25px;
+            display: flex;
+            justify-content: center;
+            gap: 35px;
+        }
+        
+        .social-button {
+            display: inline-block;
+            transition: all 0.3s;
+            width: 60px;   /* Taille augmentée */
+            height: 60px;  /* Taille augmentée */
+        }
+        
+        .social-button img {
+            width: 100%;
+            height: 100%;
+            object-fit: contain;
+        }
+        
+        .social-button:hover {
+            transform: translateY(-3px);
+            filter: brightness(1.1);
+        }
+        
+        /* Désactiver la sélection et le contexte menu */
+        .mapboxgl-canvas {
+            user-select: none;
+            -webkit-user-select: none;
+            -moz-user-select: none;
+            -ms-user-select: none;
+        }
+        
+        @media (max-width: 768px) {
+            .content-container {
+                width: 80%;
+                padding: 20px;
+            }
+            
+            .links {
+                gap: 25px;
+            }
+            
+            .social-button {
+                width: 50px;
+                height: 50px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div id="map"></div>
+    <div class="footprints" id="footprints"></div>
+    
+    <div class="content-container">
+        <h1>Simon Déchamps</h1>
+        <p>Développement SIG pour les activités outdoor</p>
+        
+        <div class="links">
+            <a href="https://www.linkedin.com/in/simon-dechamps/" class="social-button" target="_blank">
+                <img src="images/linkedin.png" alt="LinkedIn">
+            </a>
+            <a href="https://www.strava.com/athletes/35997665" class="social-button" target="_blank">
+                <img src="images/strava.png" alt="Strava">
+            </a>
+            <a href="https://pixelrun.fr" class="social-button" target="_blank">
+                <img src="images/pixelrun.png" alt="Pixelrun">
+            </a>
+        </div>
+    </div>
+    
+    <script>
+        // Initialisation de la carte Mapbox
+        mapboxgl.accessToken = 'pk.eyJ1IjoicGl4ZWxydW4iLCJhIjoiY205d2Z2cGQ1MHhrdDJzc2J5aW44ZWdhaiJ9.tiTixoAUW0vj708ab8IxCg';
+        
+        // Carte centrée sur les Alpes avec style topographique
+        const map = new mapboxgl.Map({
+            container: 'map',
+            style: 'mapbox://styles/pixelrun/cm9v5wzse00ge01s09h3seneu', // Style personnalisé
+            center: [3.206170160455215, 44.19281979385327], // Coordonnées définies
+            zoom: 14.5,
+            pitch: 0, // Angle d'inclinaison à 0 pour une vue plate
+            bearing: 0, // Orientation
+            attributionControl: false,
+            dragRotate: false,  // Désactiver la rotation par glisser
+            touchZoomRotate: false, // Désactiver la rotation par toucher
+            dragPan: false,  // Désactiver le déplacement de la carte
+            scrollZoom: false, // Désactiver le zoom par défilement
+            doubleClickZoom: false, // Désactiver le zoom par double-clic
+            boxZoom: false,  // Désactiver le zoom par boîte
+            keyboard: false  // Désactiver les contrôles clavier
+        });
+        
+        // Désactiver tous les gestionnaires interactifs
+        map.boxZoom.disable();
+        map.dragPan.disable();
+        map.dragRotate.disable();
+        map.keyboard.disable();
+        map.doubleClickZoom.disable();
+        map.touchZoomRotate.disable();
+        map.scrollZoom.disable();
+        
+        // Désactiver le menu contextuel (clic droit)
+        map.getCanvas().addEventListener('contextmenu', (e) => {
+            e.preventDefault();
+        });
+        
+        // Système d'empreintes de pas
+        const footprintsContainer = document.getElementById('footprints');
+        let isLeftFoot = true;
+        
+        // Configuration des empreintes
+        const fixedStepDistance = 20; // Distance fixe entre chaque pas (en pixels)
+        const lateralOffset = 10; // Distance latérale pour l'effet de quinconce (en pixels)
+        
+        // Stockage de la position actuelle de la souris
+        let currentMousePosition = { x: 0, y: 0 };
+        let isMouseMoving = false;
+        let lastPathPosition = { x: 0, y: 0 };
+        let stepDirection = { x: 0, y: 0 }; // Direction actuelle de marche
+        
+        // Gestion des empreintes
+        const footprints = [];
+        let footprintIndex = 0;
+        const maxFootprints = 40;
+        
+        // Créer les éléments d'empreinte réutilisables
+        for (let i = 0; i < maxFootprints; i++) {
+            const footprint = document.createElement('div');
+            footprint.className = 'footprint';
+            if (i % 2 === 0) {
+                footprint.classList.add('left-foot');
+            } else {
+                footprint.classList.add('right-foot');
+            }
+            footprintsContainer.appendChild(footprint);
+            footprints.push({
+                element: footprint,
+                x: 0,
+                y: 0,
+                active: false,
+                left: i % 2 === 0
+            });
+        }
+        
+        // Après le chargement de la carte
+        map.on('load', function() {
+            // Appliquer un style minimaliste sans beaucoup de labels
+            try {
+                // Masquer les labels
+                ['country-label', 'settlement-minor-label', 'settlement-major-label', 
+                 'poi-label', 'water-point-label', 'water-line-label', 
+                 'natural-line-label', 'natural-point-label'].forEach(layer => {
+                    if (map.getLayer(layer)) {
+                        map.setLayoutProperty(layer, 'visibility', 'none');
+                    }
+                });
+                
+                // Mettre en évidence les lignes de niveau
+                if (map.getLayer('contour-line')) {
+                    map.setPaintProperty('contour-line', 'line-color', '#000');
+                    map.setPaintProperty('contour-line', 'line-width', 0.8);
+                }
+                
+                if (map.getLayer('contour-label')) {
+                    map.setLayoutProperty('contour-label', 'visibility', 'none');
+                }
+                
+                // Fond blanc
+                if (map.getLayer('background')) {
+                    map.setPaintProperty('background', 'background-color', '#ffffff');
+                }
+            } catch (error) {
+                console.log("Certaines couches ne sont pas disponibles:", error);
+            }
+        });
+        
+        // Fonction pour créer une empreinte
+        function createFootprint(x, y) {
+            const footprint = footprints[footprintIndex];
+            footprintIndex = (footprintIndex + 1) % maxFootprints;
+            
+            // Calculer l'angle de rotation basé sur la direction du mouvement
+            const angle = Math.atan2(stepDirection.y, stepDirection.x);
+            const rotation = angle * (180 / Math.PI);
+            
+            // Appliquer le décalage latéral pour créer l'effet de quinconce
+            const perpX = -stepDirection.y * (isLeftFoot ? lateralOffset : -lateralOffset);
+            const perpY = stepDirection.x * (isLeftFoot ? lateralOffset : -lateralOffset);
+            
+            // Position finale avec décalage
+            const finalX = x + perpX;
+            const finalY = y + perpY;
+            
+            // Taille fixe pour tous les pas (plus besoin de variation basée sur l'élévation)
+            const scale = 1.0;
+            
+            // Positionner et orienter l'empreinte
+            footprint.element.style.left = `${finalX - 5}px`;
+            footprint.element.style.top = `${finalY - 10}px`;
+            footprint.element.style.transform = `rotate(${rotation + 90}deg) scale(${scale})`;
+            footprint.element.style.opacity = '0.8';
+            
+            // Programmer la disparition de l'empreinte
+            setTimeout(() => {
+                footprint.element.style.opacity = '0';
+            }, 3000);
+            
+            // Mettre à jour les informations
+            footprint.x = finalX;
+            footprint.y = finalY;
+            footprint.active = true;
+            
+            // Alternance du pied pour le prochain pas
+            isLeftFoot = !isLeftFoot;
+            
+            // Mise à jour de la dernière position du chemin
+            lastPathPosition = { x, y };
+        }
+        
+        // Système de suivi du chemin (pour créer des pas à intervalle régulier)
+        function updateFootprintPath() {
+            if (!isMouseMoving) return;
+            
+            // Calcul du vecteur de direction
+            const dx = currentMousePosition.x - lastPathPosition.x;
+            const dy = currentMousePosition.y - lastPathPosition.y;
+            const distance = Math.sqrt(dx * dx + dy * dy);
+            
+            // Mettre à jour la direction si mouvement significatif
+            if (distance > 5) {
+                stepDirection = {
+                    x: dx / distance,
+                    y: dy / distance
+                };
+            }
+            
+            // Si la distance est suffisante pour un nouveau pas
+            if (distance >= fixedStepDistance) {
+                // Calculer la position du prochain pas
+                const ratio = fixedStepDistance / distance;
+                const nextX = lastPathPosition.x + dx * ratio;
+                const nextY = lastPathPosition.y + dy * ratio;
+                
+                // Créer une empreinte à cette position
+                createFootprint(nextX, nextY);
+            }
+            
+            // Continuer la boucle d'animation
+            requestAnimationFrame(updateFootprintPath);
+        }
+        
+        // Gestionnaire d'événements pour le mouvement de la souris
+        document.addEventListener('mousemove', (e) => {
+            // Mettre à jour la position actuelle de la souris
+            currentMousePosition.x = e.clientX;
+            currentMousePosition.y = e.clientY;
+            
+            // Si c'est le premier mouvement ou si la souris était arrêtée
+            if (!isMouseMoving) {
+                isMouseMoving = true;
+                
+                // Initialiser la dernière position du chemin
+                if (lastPathPosition.x === 0 && lastPathPosition.y === 0) {
+                    lastPathPosition.x = e.clientX;
+                    lastPathPosition.y = e.clientY;
+                }
+                
+                // Démarrer le suivi du chemin
+                updateFootprintPath();
+            }
+        });
+        
+        // Détection quand la souris s'arrête de bouger
+        let mouseStopTimer;
+        document.addEventListener('mousemove', () => {
+            clearTimeout(mouseStopTimer);
+            mouseStopTimer = setTimeout(() => {
+                isMouseMoving = false;
+            }, 100);
+        });
+
+        // Support tactile pour les appareils mobiles
+        document.addEventListener('touchmove', (e) => {
+            e.preventDefault();
+            
+            const touch = e.touches[0];
+            currentMousePosition.x = touch.clientX;
+            currentMousePosition.y = touch.clientY;
+            
+            if (!isMouseMoving) {
+                isMouseMoving = true;
+                
+                if (lastPathPosition.x === 0 && lastPathPosition.y === 0) {
+                    lastPathPosition.x = touch.clientX;
+                    lastPathPosition.y = touch.clientY;
+                }
+                
+                updateFootprintPath();
+            }
+        }, { passive: false });
+        
+        // Détection quand le toucher s'arrête
+        let touchStopTimer;
+        document.addEventListener('touchmove', () => {
+            clearTimeout(touchStopTimer);
+            touchStopTimer = setTimeout(() => {
+                isMouseMoving = false;
+            }, 100);
+        });
+        
+        document.addEventListener('touchend', () => {
+            isMouseMoving = false;
+        });
+    </script>
+</body>
+</html>
